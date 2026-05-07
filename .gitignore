@@ -2,3 +2,5 @@
 .git
 suk.egg-info
 dist
+suk.code-workspace
+build/
