@@ -1,6 +1,7 @@
 # suk
 
 **Upto 4 live disposable inboxes in your terminal, persistent across sessions — zero browser, zero clicks.**
+Use multiple sessions for account take over chains, invite abuse, OTP rate limiting and anything that needs multiple live identities at once
 
 <img width="400" height="348" alt="Screencast" src="https://github.com/user-attachments/assets/dda54a68-69b3-449e-b7dd-db4780548284" />
 
@@ -23,7 +24,7 @@ suk --open all           # reopen every saved session at once
 ```
 
 Emails print to terminal in real time. Sessions persist in `~/.suk_sessions.json` — close and reopen any inbox anytime with `--open`.
-
+> Note that the emails disappear after few minutes.
 ## License
 
 MIT
