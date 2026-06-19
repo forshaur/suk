@@ -8,11 +8,7 @@ Use multiple sessions for account take over chains, invite abuse, OTP rate limit
 <img width="676" height="617" alt="Screenshot" src="https://github.com/user-attachments/assets/ce8fbd9e-d287-485c-92a4-ada4de413692" />
 
 
-> the sessions last for few minutes (N) because this is a temporary email service.
 
-
-> you may quit the tool and again reopen the sessions - email will be available for those N minutes.
- 
 ## Install
 
 ```bash
