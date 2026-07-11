@@ -20,14 +20,16 @@ pip install suk
 ```bash
 suk                      # open saved inbox (creates one on first run)
 suk --new                # burn current address, get a fresh one
-suk --sessions <n>       # spin up n inboxes (1–4) and listen on all simultaneously
 suk --list               # list all saved sessions
-suk --open <n>           # reopen saved session by slot number
+suk --open <n>           # reopen saved session by slot (history shown first)
 suk --open <a> <b> ...   # open multiple slots simultaneously
 suk --open all           # reopen every saved session at once
+suk --shred all          # delete all local data (sessions + history)
+suk --shred history      # delete email history only (sessions kept)
+suk --version            # print version and exit
 ```
 
-Emails print to terminal in real time. Sessions persist in `~/.suk_sessions.json` — close and reopen any inbox anytime with `--open`.
+Emails print to terminal in real time. Sessions persist in `~/.suk_sessions.json` and email history in `~/.suk_history.json` — close and reopen any inbox anytime with `--open`.
 
 ## License
 
