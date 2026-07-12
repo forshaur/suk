@@ -4,6 +4,7 @@ suk — disposable inbox in your terminal.
 Usage:
     suk                         open saved inbox, or create one if none exists
     suk --new                   create a fresh inbox (replaces slot 0)
+    suk --add                   add a new inbox in the next empty slot
     suk --list                  list all saved sessions
     suk --open <n>              open saved session in slot n (history shown first)
     suk --open all              open all saved sessions simultaneously
@@ -26,11 +27,11 @@ console = Console(highlight=False)
 # the rest of the package fails to import.
 def _import_mail():
     from suk.mail import (
-        create_mailbox, listen, load_saved_mailbox,
+        create_mailbox, add_mailbox, listen, load_saved_mailbox,
         list_sessions, open_session, open_sessions_multi,
         MAX_SESSIONS, _load_sessions,
     )
-    return (create_mailbox, listen, load_saved_mailbox,
+    return (create_mailbox, add_mailbox, listen, load_saved_mailbox,
             list_sessions, open_session, open_sessions_multi,
             MAX_SESSIONS, _load_sessions)
 
@@ -92,7 +93,7 @@ def main():
 
 
 def _main(args: list):
-    (create_mailbox, listen, load_saved_mailbox,
+    (create_mailbox, add_mailbox, listen, load_saved_mailbox,
      list_sessions, open_session, open_sessions_multi,
      MAX_SESSIONS, _load_sessions) = _import_mail()
 
@@ -129,6 +130,15 @@ def _main(args: list):
         token, mailbox = create_mailbox()
         update_thread.join(timeout=1.5)
         listen(token, mailbox, slot=0)
+        return
+
+    # ── --add ─────────────────────────────────────────────────────────────────
+    if args[0] == "--add":
+        _print_banner()
+        update_thread = check_for_updates()
+        slot, token, mailbox = add_mailbox()
+        update_thread.join(timeout=1.5)
+        listen(token, mailbox, slot=slot)
         return
 
     # ── --list ────────────────────────────────────────────────────────────────

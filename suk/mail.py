@@ -166,6 +166,38 @@ def load_saved_mailbox():
     return None
 
 
+def add_mailbox():
+    """Create a mailbox in the next empty slot. Returns (slot, token, mailbox)."""
+    _migrate_legacy()
+    sessions = _load_sessions()
+
+    # Find first empty slot
+    slot = None
+    for i, s in enumerate(sessions):
+        if s is None:
+            slot = i
+            break
+
+    if slot is None:
+        console.print(
+            f"[bold red]  ✗ All {MAX_SESSIONS} slots are full.[/bold red]\n"
+            f"  Use [bold]suk --shred all[/bold] to clear, or [bold]suk --new[/bold] to replace slot 0."
+        )
+        sys.exit(1)
+
+    console.print(f"[dim]  Spinning up inbox in slot {slot}…[/dim]")
+    try:
+        data = _api_create()
+    except Exception as e:
+        console.print(f"[bold red]  ✗ Couldn't reach temp-mail:[/bold red] {e}")
+        sys.exit(1)
+
+    now = time.time()
+    sessions[slot] = {"token": data["token"], "mailbox": data["mailbox"], "created_at": now}
+    _save_sessions(sessions)
+    return slot, data["token"], data["mailbox"]
+
+
 # ── Multi-session creation ─────────────────────────────────────────────────────
 
 def create_multi_sessions(n: int):
