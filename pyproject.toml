@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "suk"
-version = "3.0.0"
-description = "Disposable temp-mail inbox straight from your terminal"
+version = "4.0.0"
+description = "Disposable temp-mail inbox — Python SDK and CLI"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.8"
 dependencies = [
     "curl-cffi>=0.6",
     "requests>=2.28",
+    "rich>=13.0",
 ]
 
 [project.scripts]
