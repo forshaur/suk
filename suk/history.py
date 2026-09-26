@@ -53,7 +53,7 @@ def get_history(mailbox: str) -> list:
 
 
 def save_message(mailbox: str, msg_id: str, sender: str,
-                 subject: str, body: str):
+                 subject: str, body: str, html: Optional[str] = None):
     """
     Persist a single message for *mailbox*.
     Silently skips if the message id is already stored.
@@ -63,13 +63,16 @@ def save_message(mailbox: str, msg_id: str, sender: str,
     # Deduplicate by id
     if any(m["id"] == msg_id for m in bucket):
         return
-    bucket.insert(0, {          # most-recent-first
+    msg_entry = {          # most-recent-first
         "id":          msg_id,
         "from":        sender,
         "subject":     subject,
         "body":        body,
         "received_at": time.time(),
-    })
+    }
+    if html is not None:
+        msg_entry["html"] = html
+    bucket.insert(0, msg_entry)
     _save(data)
 
 

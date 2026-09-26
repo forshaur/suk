@@ -9,6 +9,7 @@ Usage:
     suk --open <n>              open saved session in slot n (history shown first)
     suk --open all              open all saved sessions simultaneously
     suk --open <a> <b> …        open specific slots simultaneously
+    suk --html                  return / display emails in raw HTML
     suk --shred all             delete ALL local data (sessions + history)
     suk --shred history         delete local email history only
     suk --version               print version and exit
@@ -99,6 +100,20 @@ def _main(args: list):
 
     from suk.updater import check_for_updates
 
+    # ── --version ─────────────────────────────────────────────────────────────
+    if "--version" in args:
+        console.print(f"suk [bold]{_get_version()}[/bold]")
+        return
+
+    # ── --help / -h ───────────────────────────────────────────────────────────
+    if "--help" in args or "-h" in args:
+        console.print(__doc__.strip())
+        return
+
+    raw_html = "--html" in args
+    if raw_html:
+        args = [a for a in args if a != "--html"]
+
     # ── no args: open or create slot 0 ────────────────────────────────────────
     if not args:
         _print_banner()
@@ -110,17 +125,7 @@ def _main(args: list):
             console.print("  [dim]No saved inbox found, creating one…[/dim]")
             token, mailbox = create_mailbox()
         update_thread.join(timeout=1.5)
-        listen(token, mailbox, slot=0)
-        return
-
-    # ── --version ─────────────────────────────────────────────────────────────
-    if args[0] == "--version":
-        console.print(f"suk [bold]{_get_version()}[/bold]")
-        return
-
-    # ── --help / -h ───────────────────────────────────────────────────────────
-    if args[0] in ("--help", "-h"):
-        console.print(__doc__.strip())
+        listen(token, mailbox, slot=0, raw_html=raw_html)
         return
 
     # ── --new ─────────────────────────────────────────────────────────────────
@@ -129,7 +134,7 @@ def _main(args: list):
         update_thread = check_for_updates()
         token, mailbox = create_mailbox()
         update_thread.join(timeout=1.5)
-        listen(token, mailbox, slot=0)
+        listen(token, mailbox, slot=0, raw_html=raw_html)
         return
 
     # ── --add ─────────────────────────────────────────────────────────────────
@@ -138,7 +143,7 @@ def _main(args: list):
         update_thread = check_for_updates()
         slot, token, mailbox = add_mailbox()
         update_thread.join(timeout=1.5)
-        listen(token, mailbox, slot=slot)
+        listen(token, mailbox, slot=slot, raw_html=raw_html)
         return
 
     # ── --list ────────────────────────────────────────────────────────────────
@@ -177,7 +182,7 @@ def _main(args: list):
                 console.print("[dim]No saved sessions. Run `suk` to create one.[/dim]")
                 sys.exit(0)
             update_thread.join(timeout=1.5)
-            open_sessions_multi(slots)
+            open_sessions_multi(slots, raw_html=raw_html)
             return
 
         slots = []
@@ -196,9 +201,9 @@ def _main(args: list):
 
         update_thread.join(timeout=1.5)
         if len(slots) == 1:
-            open_session(slots[0])
+            open_session(slots[0], raw_html=raw_html)
         else:
-            open_sessions_multi(slots)
+            open_sessions_multi(slots, raw_html=raw_html)
         return
 
     console.print(f"[red]Unknown command:[/red] [bold]{args[0]}[/bold]\n")

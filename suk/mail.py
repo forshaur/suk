@@ -200,7 +200,7 @@ def add_mailbox():
 
 # ── Multi-session creation ─────────────────────────────────────────────────────
 
-def create_multi_sessions(n: int):
+def create_multi_sessions(n: int, raw_html: bool = False):
     if not (1 <= n <= MAX_SESSIONS):
         console.print(f"[red]n must be between 1 and {MAX_SESSIONS}.[/red]")
         sys.exit(1)
@@ -225,7 +225,7 @@ def create_multi_sessions(n: int):
     DATA_FILE.write_text(json.dumps(
         {"token": sessions[0]["token"], "mailbox": sessions[0]["mailbox"], "created_at": now}, indent=2
     ))
-    _listen_multi(new_sessions)
+    _listen_multi(new_sessions, raw_html=raw_html)
 
 
 # ── Session listing ────────────────────────────────────────────────────────────
@@ -268,7 +268,7 @@ def list_sessions():
     console.print()
 
 
-def open_session(slot: int):
+def open_session(slot: int, raw_html: bool = False):
     _migrate_legacy()
     sessions = _load_sessions()
     if not (0 <= slot < MAX_SESSIONS):
@@ -278,7 +278,7 @@ def open_session(slot: int):
     if not s:
         console.print(f"[red]Slot {slot} is empty.[/red] Create sessions with `suk` or `suk --new`.")
         sys.exit(1)
-    listen(s["token"], s["mailbox"], slot=slot)
+    listen(s["token"], s["mailbox"], slot=slot, raw_html=raw_html)
 
 
 # ── Rich display helpers ───────────────────────────────────────────────────────
@@ -338,14 +338,17 @@ def _render_message(msg_data: dict, slot: int, multi: bool = False,
     )
 
 
-def _display_history(mailbox: str, slot: int):
+def _display_history(mailbox: str, slot: int, raw_html: bool = False):
     """Print locally stored past messages for this mailbox."""
     msgs = get_history(mailbox)
     if not msgs:
         return
     _print_history_header(mailbox, slot)
     for m in msgs:
-        console.print(_render_message(m, slot=slot, from_history=True))
+        display_m = dict(m)
+        if raw_html and m.get("html"):
+            display_m["body"] = m["html"]
+        console.print(_render_message(display_m, slot=slot, from_history=True))
     color = _slot_style(slot)
     console.print(Rule(
         f"[dim]─── {len(msgs)} saved message{'s' if len(msgs) != 1 else ''} above · live below ───[/dim]",
@@ -418,7 +421,7 @@ def _poll_with_retry(token: str, slot: int, stop: threading.Event):
 
 # ── Full message body fetch ───────────────────────────────────────────────────
 
-def _fetch_full_body(token: str, message_id: str) -> str:
+def _fetch_message_detail(token: str, message_id: str) -> dict:
     try:
         r = requests.get(
             f"https://web2.temp-mail.org/messages/{message_id}",
@@ -427,14 +430,25 @@ def _fetch_full_body(token: str, message_id: str) -> str:
             timeout=8,
         )
         if r.status_code != 200:
-            return ""
+            return {}
         data = r.json()
-        body = data.get("bodyText", "").strip()
-        if not body:
-            body = _strip_html(data.get("bodyHtml", "")).strip()
-        return body
+        body_text = data.get("bodyText", "").strip()
+        body_html = data.get("bodyHtml", "")
+        if not body_text and body_html:
+            body_text = _strip_html(body_html).strip()
+        return {
+            "body_text": body_text,
+            "body_html": body_html,
+        }
     except Exception:
-        return ""
+        return {}
+
+
+def _fetch_full_body(token: str, message_id: str, raw_html: bool = False) -> str:
+    detail = _fetch_message_detail(token, message_id)
+    if raw_html and detail.get("body_html"):
+        return detail["body_html"]
+    return detail.get("body_text", "")
 
 
 def _strip_html(html: str) -> str:
@@ -451,8 +465,8 @@ def _strip_html(html: str) -> str:
 
 # ── Listen (single inbox) ─────────────────────────────────────────────────────
 
-def listen(token: str, mailbox: str, slot: int = 0):
-    _display_history(mailbox, slot)
+def listen(token: str, mailbox: str, slot: int = 0, raw_html: bool = False):
+    _display_history(mailbox, slot, raw_html=raw_html)
     _print_inbox_header(mailbox, slot)
 
     seen  = set()
@@ -469,19 +483,23 @@ def listen(token: str, mailbox: str, slot: int = 0):
                 mid = msg.get("_id")
                 if mid not in seen:
                     seen.add(mid)
-                    body = _fetch_full_body(token, mid)
+                    detail = _fetch_message_detail(token, mid)
+                    body_text = detail.get("body_text", "") or msg.get("bodyPreview", "")
+                    body_html = detail.get("body_html", "")
                     # Persist to history
                     save_message(
                         mailbox,
                         msg_id  = mid,
                         sender  = msg.get("from", ""),
                         subject = msg.get("subject", "(no subject)"),
-                        body    = body or msg.get("bodyPreview", ""),
+                        body    = body_text,
+                        html    = body_html or None,
                     )
+                    display_body = (body_html if raw_html and body_html else body_text) or "(no body)"
                     display_msg = {
                         "from":    msg.get("from", "—"),
                         "subject": msg.get("subject", "(no subject)"),
-                        "body":    body or msg.get("bodyPreview", ""),
+                        "body":    display_body,
                     }
                     console.print(_render_message(display_msg, slot=slot))
     except KeyboardInterrupt:
@@ -492,7 +510,7 @@ def listen(token: str, mailbox: str, slot: int = 0):
 
 # ── Listen (multiple inboxes) ─────────────────────────────────────────────────
 
-def _listen_multi(sessions: list):
+def _listen_multi(sessions: list, raw_html: bool = False):
     n = len(sessions)
 
     table = Table(box=box.SIMPLE, show_header=False, border_style="dim")
@@ -522,18 +540,22 @@ def _listen_multi(sessions: list):
                     mid = msg.get("_id")
                     if mid not in seen:
                         seen.add(mid)
-                        body = _fetch_full_body(token, mid)
+                        detail = _fetch_message_detail(token, mid)
+                        body_text = detail.get("body_text", "") or msg.get("bodyPreview", "")
+                        body_html = detail.get("body_html", "")
                         save_message(
                             mailbox,
                             msg_id  = mid,
                             sender  = msg.get("from", ""),
                             subject = msg.get("subject", "(no subject)"),
-                            body    = body or msg.get("bodyPreview", ""),
+                            body    = body_text,
+                            html    = body_html or None,
                         )
+                        display_body = (body_html if raw_html and body_html else body_text) or "(no body)"
                         display_msg = {
                             "from":    msg.get("from", "—"),
                             "subject": msg.get("subject", "(no subject)"),
-                            "body":    body or msg.get("bodyPreview", ""),
+                            "body":    display_body,
                         }
                         console.print(_render_message(display_msg, slot=slot, multi=True))
         except Exception:
@@ -555,7 +577,7 @@ def _listen_multi(sessions: list):
         raise
 
 
-def open_sessions_multi(slots: list):
+def open_sessions_multi(slots: list, raw_html: bool = False):
     _migrate_legacy()
     sessions_all = _load_sessions()
     to_open = [(slot, sessions_all[slot]) for slot in slots if sessions_all[slot]]
@@ -566,20 +588,20 @@ def open_sessions_multi(slots: list):
 
     if len(to_open) == 1:
         slot, s = to_open[0]
-        listen(s["token"], s["mailbox"], slot=slot)
+        listen(s["token"], s["mailbox"], slot=slot, raw_html=raw_html)
         return
 
     # Show history for each slot before starting live listen
     for slot, s in sorted(to_open):
-        _display_history(s["mailbox"], slot)
+        _display_history(s["mailbox"], slot, raw_html=raw_html)
 
     # Build ordered lists for _listen_multi, keeping original slot colours
     session_list = [s for _, s in sorted(to_open)]
     slot_map     = [slot for slot, _ in sorted(to_open)]
-    _listen_multi_slots(session_list, slot_map)
+    _listen_multi_slots(session_list, slot_map, raw_html=raw_html)
 
 
-def _listen_multi_slots(sessions: list, slot_map: list):
+def _listen_multi_slots(sessions: list, slot_map: list, raw_html: bool = False):
     n = len(sessions)
     table = Table(box=box.SIMPLE, show_header=False, border_style="dim")
     table.add_column(width=5)
@@ -609,18 +631,22 @@ def _listen_multi_slots(sessions: list, slot_map: list):
                     mid = msg.get("_id")
                     if mid not in seen:
                         seen.add(mid)
-                        body = _fetch_full_body(token, mid)
+                        detail = _fetch_message_detail(token, mid)
+                        body_text = detail.get("body_text", "") or msg.get("bodyPreview", "")
+                        body_html = detail.get("body_html", "")
                         save_message(
                             mailbox,
                             msg_id  = mid,
                             sender  = msg.get("from", ""),
                             subject = msg.get("subject", "(no subject)"),
-                            body    = body or msg.get("bodyPreview", ""),
+                            body    = body_text,
+                            html    = body_html or None,
                         )
+                        display_body = (body_html if raw_html and body_html else body_text) or "(no body)"
                         display_msg = {
                             "from":    msg.get("from", "—"),
                             "subject": msg.get("subject", "(no subject)"),
-                            "body":    body or msg.get("bodyPreview", ""),
+                            "body":    display_body,
                         }
                         console.print(_render_message(display_msg, slot=slot, multi=True))
         except Exception:

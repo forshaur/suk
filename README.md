@@ -8,7 +8,7 @@ Disposable temporary email inbox available as a Python SDK and a CLI tool.
 
 ## Key Features
 
-- **CLI Terminal Interface**: Monitor incoming messages in real time with auto-refreshing terminal panels.
+- **CLI Terminal Interface**: Monitor incoming messages in real time with auto-refreshing terminal panels (supports plain text and raw HTML views).
 - **Multi-Inbox Support**: Maintain up to four isolated active inbox slots concurrently.
 - **Session Persistence**: Reopen existing temporary mailboxes across terminal restarts.
 - **Local Message Storage**: History saved locally to ensure received emails are retained.
@@ -49,6 +49,7 @@ The CLI tool enables instant disposable email inbox creation and management dire
 | `suk --open <slot>` | Opens a specific saved session slot (for example, `suk --open 1`). |
 | `suk --open <a> <b>` | Opens multiple specified session slots simultaneously (for example, `suk --open 0 2`). |
 | `suk --open all` | Opens all saved active session slots in parallel terminal views. |
+| `suk --html` | Returns / renders received emails in raw HTML instead of stripped plain text (can be combined with other flags, e.g. `suk --open 1 --html`, `suk --new --html`). |
 | `suk --shred all` | Permanently deletes all saved session tokens, addresses, and local message history. |
 | `suk --shred history` | Deletes local message history while retaining active inbox sessions. |
 | `suk --version` | Prints the installed package version. |

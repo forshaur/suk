@@ -15,6 +15,7 @@ CLI::
 
     $ suk              # open or create an inbox
     $ suk --new        # fresh inbox
+    $ suk --html       # return emails in raw html
     $ suk --list       # show saved sessions
 """
 
