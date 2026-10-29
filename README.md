@@ -8,18 +8,19 @@ Disposable temporary email inbox available as a Python SDK and a CLI tool.
 
 ## Key Features
 
-- **CLI Terminal Interface**: Monitor incoming messages in real time with auto-refreshing terminal panels (supports plain text and raw HTML views).
+- **CLI Terminal Interface**: Live message log with plain-text and raw-HTML views.
 - **Multi-Inbox Support**: Maintain up to four isolated active inbox slots concurrently.
 - **Session Persistence**: Reopen existing temporary mailboxes across terminal restarts.
 - **Local Message Storage**: History saved locally to ensure received emails are retained.
 - **Pure Python SDK**: Zero terminal or UI overhead when imported programmatically.
 - **Smart Polling & Filtering**: Synchronous and predicate-based message waiting for automated workflows.
+- **Agent-Friendly Output**: `--json`, stable exit codes, non-blocking defaults, and isolated state via `SUK_HOME`.
 
 ---
 
 ## Requirements
 
-- Python 3.8 or higher
+- Python 3.10 or higher
 - Operating Systems: Linux, macOS, Windows
 
 ---
@@ -42,25 +43,62 @@ The CLI tool enables instant disposable email inbox creation and management dire
 
 | Command | Description |
 | --- | --- |
-| `suk` | Opens the saved default inbox (slot 0), or creates one if no inbox exists. |
+| `suk` | Opens the saved default inbox (slot 0), or creates one if no inbox exists. In a non-TTY it prints a snapshot and exits. |
 | `suk --new` | Replaces slot 0 with a fresh temporary email address. |
 | `suk --add` | Allocates a new disposable inbox in the next empty slot (up to 4 slots total). |
-| `suk --list` | Displays a list of all active saved session slots and their email addresses. |
+| `suk --list` | Displays active saved session slots and their email addresses. |
 | `suk --open <slot>` | Opens a specific saved session slot (for example, `suk --open 1`). |
-| `suk --open <a> <b>` | Opens multiple specified session slots simultaneously (for example, `suk --open 0 2`). |
+| `suk --open <a> <b>` | Opens multiple specified session slots simultaneously. |
 | `suk --open all` | Opens all saved active session slots in parallel terminal views. |
-| `suk --html` | Returns / renders received emails in raw HTML instead of stripped plain text (can be combined with other flags, e.g. `suk --open 1 --html`, `suk --new --html`). |
-| `suk --shred all` | Permanently deletes all saved session tokens, addresses, and local message history. |
-| `suk --shred history` | Deletes local message history while retaining active inbox sessions. |
+| `suk --html` | Renders received emails as raw HTML instead of stripped plain text. |
+| `suk --json` | Emits one JSON document on stdout. Combine with any read command. |
+| `suk --once` | Prints a snapshot and exits instead of opening the TUI. |
+| `suk messages --slot 0 --json` | Lists messages in a slot without opening the TUI. |
+| `suk wait --slot 0 --timeout 60 --json` | Waits for one message and prints it. |
+| `suk delete --slot 2 --yes` | Deletes one slot and its local history. |
+| `suk --shred all --yes` | Deletes all saved session tokens, addresses, and local message history. |
+| `suk --shred history --yes` | Deletes local message history while retaining active inbox sessions. |
+| `suk schema` | Prints a machine-readable command and exit-code schema. |
+| `suk --check-update` | Checks GitHub for a newer release. It never installs anything. |
 | `suk --version` | Prints the installed package version. |
 | `suk --help` | Displays help and command usage instructions. |
 
 ## Session & Storage Mechanics
 
-`suk` maintains state across executions using local JSON storage files in the user's home directory (`~`):
+`suk` maintains state across executions using local JSON files in the user's home directory (`~`):
 
 - **Session Configuration**: `~/.suk_sessions.json` stores active session tokens, mailbox addresses, and slot assignments.
 - **Email History**: `~/.suk_history.json` retains downloaded email metadata and message contents across CLI sessions.
+- **Isolation**: Set `SUK_HOME=/path/to/dir` to move both files there. A new directory is created with mode `0700`; files are written atomically with mode `0600`.
+- **Legacy import**: `~/.otp_mailbox.json` is imported into slot 0 once, then left untouched.
+
+## Agent Usage
+
+Agents should prefer explicit, bounded commands:
+
+```bash
+suk --list --json
+suk --new --json
+suk messages --slot 0 --json --limit 20
+suk wait --slot 0 --timeout 60 --json
+suk delete --slot 2 --yes --json
+```
+
+Output envelope:
+
+```json
+{"schema_version":"1","ok":true,"data":{},"error":null,"meta":{}}
+```
+
+Errors are structured and go to stdout in JSON mode:
+
+```json
+{"ok":false,"error":{"code":"NOT_FOUND","message":"Slot 0 is empty.","hint":"Run `suk --list`.","retryable":false}}
+```
+
+Exit codes: `0` success, `2` usage, `3` auth/expired, `4` not found, `5` rate limit, `6` network, `7` API, `130` interrupted.
+
+Plain `suk` opens a blocking TUI only when stdin and stdout are terminals. In CI or from an agent it prints a snapshot and exits. Destructive commands require `--yes`. The update checker only prints a notice; it never runs `pip install`.
 
 ---
 
@@ -306,14 +344,17 @@ print(f"Restored inbox for {restored_inbox.address}")
 
 ```
 suk/
-├── __init__.py       # Package exports and version metadata
+├── __init__.py       # Package exports and version
+├── __main__.py       # python -m suk
 ├── client.py         # Pure Python SDK (Mailbox class and HTTP logic)
 ├── models.py         # Data structures (Message dataclass)
-├── exceptions.py     # Custom exception definitions
-├── cli.py            # CLI entrypoint and argument parser
-├── mail.py           # Terminal display loops and Rich panel layouts
-├── history.py        # Local storage handlers (~/.suk_history.json)
-└── updater.py        # Background update checker thread
+├── exceptions.py     # Custom exceptions and exit-code mapping
+├── cli.py            # CLI entrypoint, argument parser, JSON output
+├── mail.py           # Session persistence, polling, Rich rendering
+├── history.py        # Local storage handlers
+├── paths.py          # SUK_HOME paths and atomic 0600 writes
+├── output.py         # JSON envelope helpers
+└── updater.py        # Update checker (notify only; never installs)
 ```
 
 ## Setting Up for Local Development
@@ -333,19 +374,31 @@ suk/
    venv\Scripts\activate
    ```
 
-3. Install the package in editable mode:
+3. Install the package with test dependencies:
    ```bash
-   pip install -e .
+   pip install -e ".[dev]"
+   ```
+
+4. Run the tests:
+   ```bash
+   pytest -q
    ```
 
 ## Dependencies
 
-- `curl-cffi`: Network transport with browser impersonation to communicate with upstream APIs.
-- `requests`: General HTTP utilities.
-- `rich`: Terminal rendering, color formatting, and dynamic display panels.
+- `curl-cffi>=0.15.0`: Network transport with browser impersonation. Version 0.15.0 fixes CVE-2026-33752 (redirect-based SSRF).
+- `rich`: Terminal rendering, color formatting, and panel layouts.
+
+## Testing
+
+Tests use fake HTTP responses and an isolated `SUK_HOME`; they never touch the network or your real inbox state.
+
+```bash
+pytest -q
+```
 
 ---
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](file:///c:/Users/Shaurya/Documents/project/suk/LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.

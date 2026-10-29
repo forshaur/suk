@@ -1,46 +1,34 @@
 """
 Local email history store.
 
-Emails are persisted in ~/.suk_history.json, keyed by mailbox address.
-Each entry is a list of message dicts (most-recent-first).
-
-Layout:
-    {
-      "abc@domain.com": [
-        {
-          "id":          "<message _id from API>",
-          "from":        "sender@example.com",
-          "subject":     "Hello",
-          "body":        "Plain-text body ...",
-          "received_at": 1720700000.0   (Unix timestamp)
-        },
-        ...
-      ],
-      ...
-    }
+Emails are persisted in ``$SUK_HOME/.suk_history.json`` (``$HOME`` by
+default), keyed by mailbox address.  Each entry is a list of message dicts
+(most-recent-first).
 """
 
 import json
 import time
-from pathlib import Path
 from typing import Optional
 
-HISTORY_FILE = Path.home() / ".suk_history.json"
+from suk import paths
 
-
-# ── I/O ───────────────────────────────────────────────────────────────────────
 
 def _load() -> dict:
-    if HISTORY_FILE.exists():
+    path = paths.history_file()
+    if path.exists():
         try:
-            return json.loads(HISTORY_FILE.read_text())
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return data if isinstance(data, dict) else {}
         except Exception:
             pass
     return {}
 
 
 def _save(data: dict):
-    HISTORY_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    paths.atomic_write(
+        paths.history_file(),
+        json.dumps(data, indent=2, ensure_ascii=False),
+    )
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
@@ -48,20 +36,21 @@ def _save(data: dict):
 def get_history(mailbox: str) -> list:
     """Return the stored messages for *mailbox* (oldest-first)."""
     data = _load()
-    # Stored most-recent-first; reverse for chronological display
-    return list(reversed(data.get(mailbox, [])))
+    bucket = data.get(mailbox, [])
+    if not isinstance(bucket, list):
+        return []
+    return [message for message in reversed(bucket) if isinstance(message, dict)]
 
 
 def save_message(mailbox: str, msg_id: str, sender: str,
                  subject: str, body: str, html: Optional[str] = None):
-    """
-    Persist a single message for *mailbox*.
-    Silently skips if the message id is already stored.
-    """
+    """Persist a single message for *mailbox*. Skip duplicate ids."""
     data = _load()
     bucket = data.setdefault(mailbox, [])
-    # Deduplicate by id
-    if any(m["id"] == msg_id for m in bucket):
+    if not isinstance(bucket, list):
+        bucket = []
+        data[mailbox] = bucket
+    if any(isinstance(m, dict) and m.get("id") == msg_id for m in bucket):
         return
     msg_entry = {          # most-recent-first
         "id":          msg_id,
@@ -77,12 +66,7 @@ def save_message(mailbox: str, msg_id: str, sender: str,
 
 
 def shred_history(mailbox: Optional[str] = None):
-    """
-    Delete history.
-
-    mailbox=None  → wipe history for ALL mailboxes (keeps file, empties it)
-    mailbox=str   → wipe only that mailbox's history
-    """
+    """Delete history for all mailboxes, or only *mailbox*."""
     if mailbox is None:
         _save({})
     else:
@@ -93,5 +77,6 @@ def shred_history(mailbox: Optional[str] = None):
 
 def shred_all():
     """Delete the history file entirely."""
-    if HISTORY_FILE.exists():
-        HISTORY_FILE.unlink()
+    path = paths.history_file()
+    if path.exists():
+        path.unlink()

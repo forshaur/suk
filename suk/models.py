@@ -5,7 +5,7 @@ These are plain dataclasses with no dependencies on Rich, curl-cffi,
 or any I/O — safe to import and serialise anywhere.
 """
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 

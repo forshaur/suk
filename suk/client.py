@@ -27,7 +27,12 @@ from typing import Callable, List, Optional
 
 from curl_cffi import requests as cffi_requests
 
-from suk.exceptions import APIError, MailboxExpiredError, WaitTimeoutError
+from suk.exceptions import (
+    APIError,
+    MailboxExpiredError,
+    NetworkError,
+    WaitTimeoutError,
+)
 from suk.models import Message
 
 # ---------------------------------------------------------------------------
@@ -35,6 +40,7 @@ from suk.models import Message
 # ---------------------------------------------------------------------------
 
 API_BASE = "https://web2.temp-mail.org"
+REQUEST_TIMEOUT = (5, 15)
 
 _HEADERS_BASE = {
     "User-Agent":      "Mozilla/5.0 (X11; Linux x86_64; rv:149.0) Gecko/20100101 Firefox/149.0",
@@ -103,6 +109,7 @@ class Mailbox:
             A :class:`Mailbox` instance ready to receive mail.
 
         Raises:
+            NetworkError: If the request fails at the transport level.
             APIError: If the upstream API returns a non-200 status.
         """
         headers = {**_HEADERS_BASE, "Content-Type": "application/json", "Content-Length": "0"}
@@ -111,9 +118,10 @@ class Mailbox:
                 f"{API_BASE}/mailbox",
                 headers=headers,
                 impersonate="firefox",
+                timeout=REQUEST_TIMEOUT,
             )
         except Exception as exc:
-            raise APIError(f"Network error while creating mailbox: {exc}") from exc
+            raise NetworkError(f"Network error while creating mailbox: {exc}") from exc
 
         if r.status_code != 200:
             raise APIError(
@@ -138,6 +146,7 @@ class Mailbox:
 
         Raises:
             MailboxExpiredError: If the token has expired (HTTP 401/403).
+            NetworkError: If the request fails at the transport level.
             APIError: On other HTTP errors.
         """
         try:
@@ -145,9 +154,10 @@ class Mailbox:
                 f"{API_BASE}/messages",
                 headers=self._auth_headers(),
                 impersonate="firefox",
+                timeout=REQUEST_TIMEOUT,
             )
         except Exception as exc:
-            raise APIError(f"Network error fetching messages: {exc}") from exc
+            raise NetworkError(f"Network error fetching messages: {exc}") from exc
 
         if r.status_code in (401, 403):
             raise MailboxExpiredError(
@@ -180,6 +190,7 @@ class Mailbox:
             A :class:`Message` with ``body_text`` and ``body_html`` populated.
 
         Raises:
+            NetworkError: If the request fails at the transport level.
             APIError: On HTTP errors.
         """
         try:
@@ -187,11 +198,15 @@ class Mailbox:
                 f"{API_BASE}/messages/{message_id}",
                 headers=self._auth_headers(),
                 impersonate="firefox",
-                timeout=8,
+                timeout=REQUEST_TIMEOUT,
             )
         except Exception as exc:
-            raise APIError(f"Network error fetching message detail: {exc}") from exc
+            raise NetworkError(f"Network error fetching message detail: {exc}") from exc
 
+        if r.status_code in (401, 403):
+            raise MailboxExpiredError(
+                f"Mailbox token expired or invalid (HTTP {r.status_code})"
+            )
         if r.status_code != 200:
             raise APIError(
                 f"Failed to fetch message {message_id} (HTTP {r.status_code})",
@@ -235,6 +250,7 @@ class Mailbox:
         Raises:
             WaitTimeoutError: If no matching message arrives within *timeout*.
             MailboxExpiredError: If the token expires while polling.
+            NetworkError: If the request fails at the transport level.
             APIError: On other HTTP errors.
 
         Example::
@@ -248,20 +264,28 @@ class Mailbox:
         """
         deadline = time.time() + timeout
         seen_ids: set = set()
+        interval = max(float(poll_interval), 0.1)
 
         while time.time() < deadline:
             messages = self.get_messages()
             for msg in messages:
                 if msg.id in seen_ids:
                     continue
-                seen_ids.add(msg.id)
                 if predicate is None or predicate(msg):
-                    return self.get_message_detail(msg.id)
+                    # Mark accepted messages only.  A rejected message stays
+                    # eligible so a later predicate can accept it.
+                    seen_ids.add(msg.id)
+                    detail = self.get_message_detail(msg.id)
+                    if not detail.sender:
+                        detail.sender = msg.sender
+                    if not detail.subject:
+                        detail.subject = msg.subject
+                    return detail
 
             remaining = deadline - time.time()
             if remaining <= 0:
                 break
-            time.sleep(min(poll_interval, remaining))
+            time.sleep(min(interval, remaining))
 
         raise WaitTimeoutError(
             f"No matching message arrived within {timeout}s on {self.address}"

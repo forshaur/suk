@@ -1,0 +1,16 @@
+{
+  "messages": [
+    {
+      "_id": "m1",
+      "from": "no-reply@service.com",
+      "subject": "Welcome",
+      "bodyPreview": "Thanks for signing up"
+    },
+    {
+      "_id": "m2",
+      "from": "auth@service.com",
+      "subject": "Your code",
+      "bodyPreview": "481920"
+    }
+  ]
+}

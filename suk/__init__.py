@@ -15,29 +15,34 @@ CLI::
 
     $ suk              # open or create an inbox
     $ suk --new        # fresh inbox
-    $ suk --html       # return emails in raw html
+    $ suk --json       # machine-readable output
     $ suk --list       # show saved sessions
 """
 
-from importlib.metadata import version as _pkg_version, PackageNotFoundError
-
-# Version -------------------------------------------------------------------
-try:
-    __version__ = _pkg_version("suk")
-except PackageNotFoundError:
-    __version__ = "0.0.0"
+__version__ = "4.1.0"
 
 # Public API ----------------------------------------------------------------
 from suk.client import Mailbox
 from suk.models import Message
-from suk.exceptions import SukError, APIError, MailboxExpiredError, WaitTimeoutError
+from suk.exceptions import (
+    APIError,
+    MailboxExpiredError,
+    NetworkError,
+    NotFoundError,
+    SukError,
+    UsageError,
+    WaitTimeoutError,
+)
 
 __all__ = [
-    "Mailbox",
-    "Message",
-    "SukError",
     "APIError",
+    "Mailbox",
     "MailboxExpiredError",
+    "Message",
+    "NetworkError",
+    "NotFoundError",
+    "SukError",
+    "UsageError",
     "WaitTimeoutError",
     "__version__",
 ]
